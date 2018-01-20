@@ -1,22 +1,10 @@
 
-
-
-
-#python object_detection/dataset_tools/create_data.py \
---label_map_path=/home/xiaohui/AI_homework/tensorflow_objectDetection/models/research/furnitureData/labels_items.txt \
---data_dir=/home/xiaohui/AI_homework/tensorflow_objectDetection/models/research \
---output_dir=/home/xiaohui/AI_homework/tensorflow_objectDetection/models/research/output
-
-
 import hashlib
 import io
 import logging
 import os
 import random
 import re
-
-from os import listdir, getcwd
-from os.path import join
 
 from lxml import etree
 import numpy as np
@@ -31,7 +19,7 @@ flags.DEFINE_string('data_dir', '', 'Root directory to raw pet dataset.')
 flags.DEFINE_string('output_dir', '', 'Path to directory to output TFRecords.')
 flags.DEFINE_string('label_map_path', 'furnitureData/labels_items.txt',
                     'Path to label map proto')
-flags.DEFINE_boolean('faces_only', True, 'If True, generates bounding boxes '
+flags.DEFINE_boolean('faces_only', False, 'If True, generates bounding boxes '
                      'for pet faces.  Otherwise generates bounding boxes (as '
                      'well as segmentations for full pet bodies).  Note that '
                      'in the latter case, the resulting files are much larger.')
@@ -57,7 +45,7 @@ def dict_to_tf_example(data,
                        label_map_dict,
                        image_subdirectory,
                        ignore_difficult_instances=False,
-                       faces_only=True):
+                       faces_only=False):
   """Convert XML derived dict to tf.Example proto.
 
   Notice that this function normalizes the bounding box coordinates provided
@@ -81,6 +69,8 @@ def dict_to_tf_example(data,
   Raises:
     ValueError: if the image pointed to by data['filename'] is not a valid JPEG
   """
+  faces_only=False
+
   img_path = os.path.join(image_subdirectory, data['filename'])
   with tf.gfile.GFile(img_path, 'rb') as fid:
     encoded_jpg = fid.read()
@@ -88,15 +78,15 @@ def dict_to_tf_example(data,
   image = PIL.Image.open(encoded_jpg_io)
   if image.format != 'JPEG':
     raise ValueError('Image format not JPEG')
+    logging.warning('This is warning message')
   key = hashlib.sha256(encoded_jpg).hexdigest()
 
   with tf.gfile.GFile(mask_path, 'rb') as fid:
     encoded_mask_png = fid.read()
   encoded_png_io = io.BytesIO(encoded_mask_png)
   mask = PIL.Image.open(encoded_png_io)
-  if mask.format != 'PNG':
-    raise ValueError('Mask format not PNG')
 
+  logging.warning('This is a call,I will response!')
   mask_np = np.asarray(mask)
   nonbackground_indices_x = np.any(mask_np != 2, axis=0)
   nonbackground_indices_y = np.any(mask_np != 2, axis=1)
@@ -116,28 +106,27 @@ def dict_to_tf_example(data,
   poses = []
   difficult_obj = []
   masks = []
+  logging.warning('This is a call,I will response!')
   for obj in data['object']:
     difficult = bool(int(obj['difficult']))
     if ignore_difficult_instances and difficult:
       continue
     difficult_obj.append(int(difficult))
 
-    if faces_only:
-      xmin = float(obj['bndbox']['xmin'])
-      xmax = float(obj['bndbox']['xmax'])
-      ymin = float(obj['bndbox']['ymin'])
-      ymax = float(obj['bndbox']['ymax'])
-    else:
-      xmin = float(np.min(nonzero_x_indices))
-      xmax = float(np.max(nonzero_x_indices))
-      ymin = float(np.min(nonzero_y_indices))
-      ymax = float(np.max(nonzero_y_indices))
+
+    xmin = float(obj['bndbox']['xmin'])
+    xmax = float(obj['bndbox']['xmax'])
+    ymin = float(obj['bndbox']['ymin'])
+    ymax = float(obj['bndbox']['ymax'])
 
     xmins.append(xmin / width)
     ymins.append(ymin / height)
     xmaxs.append(xmax / width)
     ymaxs.append(ymax / height)
-    class_name = get_class_name_from_filename(data['filename'])
+
+    #class_name = get_class_name_from_filename(data['filename'])
+    class_name=obj['name']
+    logging.warning('class_name is %s',obj['name'])
     classes_text.append(class_name.encode('utf8'))
     classes.append(label_map_dict[class_name])
     truncated.append(int(obj['truncated']))
@@ -180,7 +169,8 @@ def create_tf_record(output_filename,
                      label_map_dict,
                      annotations_dir,
                      image_dir,
-                     examples):
+                     examples,
+                     faces_only=True):
   """Creates a TFRecord file from examples.
 
   Args:
@@ -189,14 +179,18 @@ def create_tf_record(output_filename,
     annotations_dir: Directory where annotation files are stored.
     image_dir: Directory where image files are stored.
     examples: Examples to parse and save to tf record.
+    faces_only: If True, generates bounding boxes for pet faces.  Otherwise
+      generates bounding boxes (as well as segmentations for full pet bodies).
   """
+  faces_only=False
   writer = tf.python_io.TFRecordWriter(output_filename)
   for idx, example in enumerate(examples):
     if idx % 100 == 0:
-      logging.info('On image %d of %d', idx, len(examples))
+      logging.warning('On image %d of %d', idx, len(examples))
     xml_path = os.path.join(annotations_dir, 'xmls', example + '.xml')
-    mask_path = os.path.join(annotations_dir, 'trimaps', example + '.png')
+    mask_path = os.path.join(annotations_dir, 'trimaps', example + '.jpg')
 
+    #logging.warning('Notice examples is %s', examples)
     if not os.path.exists(xml_path):
       logging.warning('Could not find %s, ignoring example.', xml_path)
       continue
@@ -210,7 +204,7 @@ def create_tf_record(output_filename,
           data, mask_path, label_map_dict, image_dir, faces_only=faces_only)
       writer.write(tf_example.SerializeToString())
     except ValueError:
-      logging.warning('Invalid example: %s, ignoring.', xml_path)
+      logging.info('Invalid example: %s, ignoring.', xml_path)
 
   writer.close()
 
@@ -220,7 +214,7 @@ def main(_):
   data_dir = FLAGS.data_dir
   label_map_dict = label_map_util.get_label_map_dict(FLAGS.label_map_path)
 
-  logging.info('Reading from Pet dataset.')
+  logging.warning('Reading from Pet dataset.')
   image_dir = os.path.join(data_dir, 'images')
   annotations_dir = os.path.join(data_dir, 'annotations')
   examples_path = os.path.join(annotations_dir, 'trainval.txt')
@@ -234,7 +228,7 @@ def main(_):
   num_train = int(0.7 * num_examples)
   train_examples = examples_list[:num_train]
   val_examples = examples_list[num_train:]
-  logging.info('%d training and %d validation examples.',
+  logging.warning('%d training and %d validation examples.',
                len(train_examples), len(val_examples))
 
   train_output_path = os.path.join(FLAGS.output_dir, 'pet_train.record')
@@ -244,6 +238,7 @@ def main(_):
                                      'pet_train_with_masks.record')
     val_output_path = os.path.join(FLAGS.output_dir,
                                    'pet_val_with_masks.record')
+    logging.warning('this is in face only mode')
   create_tf_record(train_output_path, label_map_dict, annotations_dir,
                    image_dir, train_examples, faces_only=FLAGS.faces_only)
   create_tf_record(val_output_path, label_map_dict, annotations_dir,
@@ -252,21 +247,3 @@ def main(_):
 
 if __name__ == '__main__':
   tf.app.run()
-
-
-
-import os
-from os import listdir, getcwd
-from os.path import join
-if __name__ == '__main__':
-    source_folder='/home/seven/darknet/infrared/plate/image/'#地址是所有图片的保存地点
-    dest='/home/seven/darknet/infrared/train.txt' #保存train.txt的地址
-    file_list=os.listdir(source_folder)       #赋值图片所在文件夹的文件列表
-    train_file=open(dest,'a')                 #打开文件
-    for file_obj in file_list:                #访问文件列表中的每一个文件
-        file_path=os.path.join(source_folder,file_obj)
-        file_name,file_extend=os.path.splitext(file_obj)
-        #file_name 保存文件的名字，file_extend保存文件扩展名
-        file_num=int(file_name)
-        train_file.write(file_name+'\n')
-    train_file.close()#关闭文件
