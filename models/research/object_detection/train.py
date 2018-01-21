@@ -84,6 +84,7 @@ FLAGS = flags.FLAGS
 
 
 def main(_):
+  echo "############Enter the file train.py#################"
   assert FLAGS.train_dir, '`train_dir` is missing.'
   if FLAGS.task == 0: tf.gfile.MakeDirs(FLAGS.train_dir)
   if FLAGS.pipeline_config_path:
